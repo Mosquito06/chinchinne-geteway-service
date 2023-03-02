@@ -32,6 +32,13 @@
         </dependency>
         <!-- about eureka -->
 
+        <!-- about request-->
+        <dependency>
+            <groupId>org.springframework.cloud</groupId>
+            <artifactId>spring-cloud-starter-circuitbreaker-resilience4j</artifactId>
+        </dependency>
+        <!-- about request-->
+
         <!-- about config -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

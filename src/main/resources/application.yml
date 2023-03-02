@@ -7,13 +7,30 @@ eureka:
     fetch-registry: true
     service-url:
       defaultZone: http://127.0.0.1:30000/eureka
+  webclient:
+    enabled: true
+
+management:
+  endpoint:
+    web:
+      exposure:
+        include: refresh, health, info
 
 spring:
   application:
     name: gateway-service
   cloud:
     gateway:
+#      default-filters:
+#        - name: GlobalAuthFilter
       routes:
+        - id: login-service
+          uri: lb://AUTH-SERVICE
+          predicates:
+            - Path=/login
+            - Method=POST
+          filters:
+            - name: LoginFilter
         - id: auth-service
           uri: lb://AUTH-SERVICE
           predicates:
