@@ -1,5 +1,6 @@
 package com.chinchinne.gatewayservice;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.cloud.client.loadbalancer.LoadBalanced;
@@ -19,5 +20,11 @@ public class GatewayServiceApplication
     public WebClient.Builder webClientBuilder()
     {
         return WebClient.builder();
+    }
+
+    @Bean
+    public ObjectMapper objectMapper()
+    {
+        return new ObjectMapper();
     }
 }

@@ -1,39 +1,50 @@
 package com.chinchinne.gatewayservice.filter;
 
-import com.chinchinne.gatewayservice.request.TokenRequest;
-import com.chinchinne.gatewayservice.request.GrantType;
+import com.chinchinne.gatewayservice.model.ErrorCode;
+import com.chinchinne.gatewayservice.model.ErrorResponse;
+import com.chinchinne.gatewayservice.response.IntroSpecResponse;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.cloud.gateway.filter.GatewayFilter;
 import org.springframework.cloud.gateway.filter.factory.AbstractGatewayFilterFactory;
-import org.springframework.core.io.buffer.DataBufferUtils;
+import org.springframework.core.io.buffer.DataBuffer;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.server.reactive.ServerHttpRequest;
+import org.springframework.http.server.reactive.ServerHttpResponse;
 import org.springframework.stereotype.Component;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
-import org.springframework.web.client.RestTemplate;
 import org.springframework.web.reactive.function.BodyInserters;
 import org.springframework.web.reactive.function.client.WebClient;
-
-import java.nio.charset.StandardCharsets;
+import org.springframework.web.reactive.function.client.WebClientResponseException;
+import org.springframework.web.server.ServerWebExchange;
+import reactor.core.publisher.Mono;
 
 @Slf4j
 @Component
 public class AuthFilter extends AbstractGatewayFilterFactory<AuthFilter.Config>
 {
-    // private AuthServiceClient authServiceClient;
+    private WebClient.Builder webClientBuilder;
 
-    private RestTemplate restTemplate;
+    private ObjectMapper objectMapper;
 
-    public AuthFilter()
+    @Value("${auth.clientId}")
+    private String CLIENT_ID;
+
+    @Value("${auth.secret}")
+    private String CLIENT_SECRET;
+
+    public AuthFilter( WebClient.Builder webClientBuilder, ObjectMapper objectMapper )
     {
         super(Config.class);
-        // this.authServiceClient = authServiceClient;
-        //this.restTemplate = restTemplate;
+        this.webClientBuilder = webClientBuilder;
+        this.objectMapper = objectMapper;
     }
 
     @Data
@@ -49,81 +60,80 @@ public class AuthFilter extends AbstractGatewayFilterFactory<AuthFilter.Config>
         {
             ServerHttpRequest request = exchange.getRequest();
 
-            return DataBufferUtils.join( request.getBody() ).flatMap( dataBuffer ->
+
+            if( !request.getHeaders().containsKey( HttpHeaders.AUTHORIZATION ) )
             {
-                byte[] requestBodyByteArray = new byte[dataBuffer.readableByteCount()];
-                dataBuffer.read(requestBodyByteArray);
-                String requestBodyString = new String(requestBodyByteArray, StandardCharsets.UTF_8);
-                DataBufferUtils.release(dataBuffer);
-                TokenRequest authRequest;
-
-                try
-                {
-                    authRequest = new ObjectMapper().readValue(requestBodyString, TokenRequest.class);// parse(requestBodyString);
-
-
-//
-//
-//                            .exchangeToMono( clientResponse ->
-//                            {
-//                                System.out.println(clientResponse.toEntity(String.class));
-//
-//                                return clientResponse.toEntity(String.class);
-//                            })
-////                            .map( s ->
-////                            {
-////                                System.out.println(s);
-////
-////                                return exchange;
-////                            })
-//                            .onErrorResume( error ->
-//                            {
-//                                return Mono.error( new RuntimeException( error.getMessage()));
-//                            });
-//                            //.flatMap( chain :: filter);
-
-                    //String object = restTemplate.postForObject("http://localhost:30028/oauth/token", params, String.class);
-                }
-                catch (JsonProcessingException e)
-                {
-                    throw new RuntimeException(e);
-                }
+                return handleUnAuthorized(exchange, ErrorCode.NOT_FOUND_TOKEN);
+            }
+            else
+            {
+                String auth = request.getHeaders().get(HttpHeaders.AUTHORIZATION).get(0);
 
                 MultiValueMap<String, String> params = new LinkedMultiValueMap<>();
-                params.add("grant_type", GrantType.AUTHORIZATION_CODE.name());
-                params.add("client_id", authRequest.getCLIENT_ID());
-                params.add("client_secret", authRequest.getCLIENT_SECRET());
-                params.add("username", authRequest.getUserName());
-                params.add("password", authRequest.getPassword());
-//                    params.add("redirect_uri", REDIRECT_URI);
+                params.add("token", auth);
+                params.add("client_id", CLIENT_ID);
+                params.add("client_secret", CLIENT_SECRET);
 
-// WebClient.create("http://localhost:30026/oauth/token")
+                return webClientBuilder.baseUrl("http://auth-service/oauth2/introspect")
+                                        .build()
+                                        .method(HttpMethod.POST)
+                                        .contentType( MediaType.APPLICATION_FORM_URLENCODED )
+                                        .body(BodyInserters.fromFormData(params))
+                                        .retrieve()
+                                        .bodyToMono( IntroSpecResponse.class )
+                                        .flatMap( introSpecResponse ->
+                                        {
+                                            if( introSpecResponse.isActive() )
+                                            {
+                                                return chain.filter(exchange);
+                                            }
+                                            else
+                                            {
+                                                return handleUnAuthorized(exchange, ErrorCode.EXPIRE_TOKEN);
+                                            }
+                                        })
+                                        .onErrorResume( e ->
+                                        {
+                                            ServerHttpResponse res = (ServerHttpResponse) exchange.getResponse();
 
-                return WebClient.create("lb://auth-service/oauth/token")
-                        .method(HttpMethod.POST)
-                        .contentType( MediaType.APPLICATION_FORM_URLENCODED )
-                        .body(BodyInserters.fromFormData(params))
-                        .retrieve()
-                        .bodyToMono(String.class)
-                        .flatMap( s->
-                        {
-                            System.out.println(s);
-                            return chain.filter(exchange);
-                        });
+                                            byte[] bytes;
+                                            res.setStatusCode(HttpStatus.UNAUTHORIZED);
+                                            res.getHeaders().setContentType(MediaType.APPLICATION_JSON);
 
-                //return chain.filter(exchange);
+                                            DataBuffer buffer = res.bufferFactory().wrap(((WebClientResponseException) e).getResponseBodyAsByteArray());
 
-//                chain.filter(exchange).then(Mono.fromRunnable( () ->
-//                {
-//                    //chain.filter(exchange)
-//                }));
-
-              //  chain.filter(exchange)
-            });
-
-
-
-            //return chain.filter(exchange);
+                                            return res.writeWith(Mono.just(buffer)) ;
+                                        });
+            }
         });
+    }
+
+    private Mono<Void> handleUnAuthorized(ServerWebExchange exchange, ErrorCode errorCode)
+    {
+        ServerHttpResponse res = (ServerHttpResponse) exchange.getResponse();
+
+        byte[] bytes;
+        res.setStatusCode( HttpStatus.UNAUTHORIZED ) ;
+        res.getHeaders().setContentType(MediaType.APPLICATION_JSON);
+
+        try
+        {
+            bytes = objectMapper.writeValueAsBytes
+            (
+                ErrorResponse.builder().status(errorCode.getHttpStatus().value())
+                                        .error(errorCode.getHttpStatus().name())
+                                        .code(errorCode.name())
+                                        .message(errorCode.getDetail())
+                                        .build()
+            );
+        }
+        catch (JsonProcessingException e)
+        {
+            throw new RuntimeException(e);
+        }
+
+        DataBuffer buffer = res.bufferFactory().wrap(bytes);
+
+        return res.writeWith(Mono.just(buffer));
     }
 }

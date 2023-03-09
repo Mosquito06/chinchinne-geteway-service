@@ -31,11 +31,13 @@ import java.nio.charset.StandardCharsets;
 public class LoginFilter extends AbstractGatewayFilterFactory<LoginFilter.Config>
 {
     private WebClient.Builder webClientBuilder;
+    private ObjectMapper objectMapper;
 
-    public LoginFilter( WebClient.Builder webClientBuilder)
+    public LoginFilter( WebClient.Builder webClientBuilder, ObjectMapper objectMapper )
     {
         super(Config.class);
         this.webClientBuilder = webClientBuilder;
+        this.objectMapper = objectMapper;
     }
 
     @Data
@@ -50,7 +52,6 @@ public class LoginFilter extends AbstractGatewayFilterFactory<LoginFilter.Config
         return ( ( exchange, chain ) ->
         {
             ServerHttpRequest request = exchange.getRequest();
-            ObjectMapper objectMapper = new ObjectMapper();
 
             return DataBufferUtils.join( request.getBody() ).flatMap( dataBuffer ->
             {
@@ -86,8 +87,6 @@ public class LoginFilter extends AbstractGatewayFilterFactory<LoginFilter.Config
 
                                         .flatMap( tokenresponse ->
                                         {
-                                            System.out.println( tokenresponse );
-
                                             ServerHttpResponse res = (ServerHttpResponse) exchange.getResponse();
 
                                             byte[] bytes;

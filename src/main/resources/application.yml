@@ -1,6 +1,10 @@
 server:
   port: 30010
 
+auth:
+  clientId: legacy-oauth-client
+  secret: secret
+
 eureka:
   client:
     register-with-eureka: true
@@ -35,6 +39,14 @@ spring:
           uri: lb://AUTH-SERVICE
           predicates:
             - Path=/auth-service/**
-            - Method=GET,POST
+            - Method=POST,GET
           filters:
             - RewritePath=/auth-service/(?<segment>.*), /$\{segment}
+        - id: account-service
+          uri: lb://ACCOUNT-SERVICE
+          predicates:
+            - Path=/account-service/**
+            - Method=POST,GET,PUT,DELETE
+          filters:
+            - name : AuthFilter
+            - RewritePath=/account-service/(?<segment>.*), /$\{segment}
