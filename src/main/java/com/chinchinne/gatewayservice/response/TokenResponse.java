@@ -1,10 +1,10 @@
 package com.chinchinne.gatewayservice.response;
 
+import com.chinchinne.gatewayservice.model.TokenType;
 import com.fasterxml.jackson.databind.PropertyNamingStrategy;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import lombok.Data;
 import lombok.NoArgsConstructor;
-import lombok.ToString;
 
 import java.io.Serializable;
 
