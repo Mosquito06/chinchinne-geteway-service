@@ -7,6 +7,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.cloud.gateway.filter.GatewayFilter;
 import org.springframework.cloud.gateway.filter.factory.AbstractGatewayFilterFactory;
 import org.springframework.core.io.buffer.DataBuffer;
@@ -33,6 +34,9 @@ public class LoginFilter extends AbstractGatewayFilterFactory<LoginFilter.Config
     private WebClient.Builder webClientBuilder;
     private ObjectMapper objectMapper;
 
+    @Value("${auth.endPoint.token}")
+    private String TOKEN_END_POINT;
+
     public LoginFilter( WebClient.Builder webClientBuilder, ObjectMapper objectMapper )
     {
         super(Config.class);
@@ -41,10 +45,7 @@ public class LoginFilter extends AbstractGatewayFilterFactory<LoginFilter.Config
     }
 
     @Data
-    public static class Config
-    {
-
-    }
+    public static class Config{}
 
     @Override
     public GatewayFilter apply(Config config)
@@ -77,7 +78,7 @@ public class LoginFilter extends AbstractGatewayFilterFactory<LoginFilter.Config
                 params.add("username", tokenRequest.getUserName());
                 params.add("password", tokenRequest.getPassword());
 
-                return webClientBuilder.baseUrl("http://auth-service/oauth/token")
+                return webClientBuilder.baseUrl(TOKEN_END_POINT)
                                         .build()
                                         .method(HttpMethod.POST)
                                         .contentType( MediaType.APPLICATION_FORM_URLENCODED )

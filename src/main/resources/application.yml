@@ -4,6 +4,10 @@ server:
 auth:
   clientId: legacy-oauth-client
   secret: secret
+  header: ChinChinne-Authorization
+  endPoint:
+    instroSpec: http://auth-service/oauth2/introspect
+    token: http://auth-service/oauth/token
 
 eureka:
   client:

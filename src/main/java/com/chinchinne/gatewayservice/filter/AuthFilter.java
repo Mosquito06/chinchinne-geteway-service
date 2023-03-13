@@ -1,8 +1,11 @@
 package com.chinchinne.gatewayservice.filter;
 
+import com.chinchinne.gatewayservice.model.Authorization;
 import com.chinchinne.gatewayservice.model.ErrorCode;
 import com.chinchinne.gatewayservice.model.ErrorResponse;
+import com.chinchinne.gatewayservice.request.GrantType;
 import com.chinchinne.gatewayservice.response.IntroSpecResponse;
+import com.chinchinne.gatewayservice.response.TokenResponse;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.Data;
@@ -11,7 +14,6 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.cloud.gateway.filter.GatewayFilter;
 import org.springframework.cloud.gateway.filter.factory.AbstractGatewayFilterFactory;
 import org.springframework.core.io.buffer.DataBuffer;
-import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -40,6 +42,15 @@ public class AuthFilter extends AbstractGatewayFilterFactory<AuthFilter.Config>
     @Value("${auth.secret}")
     private String CLIENT_SECRET;
 
+    @Value("${auth.header}")
+    private String CHINCHINNE_AUTHORIZATION;
+
+    @Value("${auth.endPoint.instroSpec}")
+    private String INTRO_SPEC_END_POINT;
+
+    @Value("${auth.endPoint.token}")
+    private String TOKEN_END_POINT;
+
     public AuthFilter( WebClient.Builder webClientBuilder, ObjectMapper objectMapper )
     {
         super(Config.class);
@@ -48,10 +59,7 @@ public class AuthFilter extends AbstractGatewayFilterFactory<AuthFilter.Config>
     }
 
     @Data
-    public static class Config
-    {
-
-    }
+    public static class Config{}
 
     @Override
     public GatewayFilter apply(Config config)
@@ -61,54 +69,110 @@ public class AuthFilter extends AbstractGatewayFilterFactory<AuthFilter.Config>
             ServerHttpRequest request = exchange.getRequest();
 
 
-            if( !request.getHeaders().containsKey( HttpHeaders.AUTHORIZATION ) )
+            if( !request.getHeaders().containsKey( CHINCHINNE_AUTHORIZATION ) )
             {
-                return handleUnAuthorized(exchange, ErrorCode.NOT_FOUND_TOKEN);
+                return unAuthorizedHandler(exchange, ErrorCode.NOT_FOUND_TOKEN);
             }
             else
             {
-                String auth = request.getHeaders().get(HttpHeaders.AUTHORIZATION).get(0);
+                Authorization auth;
 
-                MultiValueMap<String, String> params = new LinkedMultiValueMap<>();
-                params.add("token", auth);
-                params.add("client_id", CLIENT_ID);
-                params.add("client_secret", CLIENT_SECRET);
+                try
+                {
+                     auth = objectMapper.readValue(request.getHeaders().get(CHINCHINNE_AUTHORIZATION).get(0), Authorization.class);
 
-                return webClientBuilder.baseUrl("http://auth-service/oauth2/introspect")
-                                        .build()
-                                        .method(HttpMethod.POST)
-                                        .contentType( MediaType.APPLICATION_FORM_URLENCODED )
-                                        .body(BodyInserters.fromFormData(params))
-                                        .retrieve()
-                                        .bodyToMono( IntroSpecResponse.class )
-                                        .flatMap( introSpecResponse ->
-                                        {
-                                            if( introSpecResponse.isActive() )
-                                            {
-                                                return chain.filter(exchange);
-                                            }
-                                            else
-                                            {
-                                                return handleUnAuthorized(exchange, ErrorCode.EXPIRE_TOKEN);
-                                            }
-                                        })
-                                        .onErrorResume( e ->
-                                        {
-                                            ServerHttpResponse res = (ServerHttpResponse) exchange.getResponse();
+                } catch (JsonProcessingException e)
+                {
+                    throw new RuntimeException(e);
+                }
 
-                                            byte[] bytes;
-                                            res.setStatusCode(HttpStatus.UNAUTHORIZED);
-                                            res.getHeaders().setContentType(MediaType.APPLICATION_JSON);
+                MultiValueMap<String, String> accessParams = new LinkedMultiValueMap<>();
+                accessParams.add("token", auth.getAccessToken());
+                accessParams.add("client_id", CLIENT_ID);
+                accessParams.add("client_secret", CLIENT_SECRET);
 
-                                            DataBuffer buffer = res.bufferFactory().wrap(((WebClientResponseException) e).getResponseBodyAsByteArray());
+                // 여러개 한번에 날려서 처리하는 방법 확인
 
-                                            return res.writeWith(Mono.just(buffer)) ;
-                                        });
+                // accessToken 확인
+                Mono<IntroSpecResponse> access = webClientBuilder.baseUrl(INTRO_SPEC_END_POINT)
+                                                                .build()
+                                                                .method(HttpMethod.POST)
+                                                                .contentType( MediaType.APPLICATION_FORM_URLENCODED )
+                                                                .body(BodyInserters.fromFormData(accessParams))
+                                                                .retrieve()
+                                                                .bodyToMono( IntroSpecResponse.class );
+
+                MultiValueMap<String, String> refreshParams = new LinkedMultiValueMap<>();
+                refreshParams.add("token", auth.getRefreshToken());
+                refreshParams.add("client_id", CLIENT_ID);
+                refreshParams.add("client_secret", CLIENT_SECRET);
+
+                // refreshToken 확인
+                Mono<IntroSpecResponse> refresh = webClientBuilder.baseUrl(INTRO_SPEC_END_POINT)
+                                                                .build()
+                                                                .method(HttpMethod.POST)
+                                                                .contentType( MediaType.APPLICATION_FORM_URLENCODED )
+                                                                .body(BodyInserters.fromFormData(refreshParams))
+                                                                .retrieve()
+                                                                .bodyToMono( IntroSpecResponse.class );
+
+                MultiValueMap<String, String> reTokenParams = new LinkedMultiValueMap<>();
+                reTokenParams.add("grant_type", GrantType.REFRESH_TOKEN.name());
+                reTokenParams.add("client_id", CLIENT_ID);
+                reTokenParams.add("client_secret", CLIENT_SECRET);
+                reTokenParams.add("refresh_token", auth.getRefreshToken());
+
+                // 토큰 재요청
+                Mono<TokenResponse> reToken =  webClientBuilder.baseUrl(TOKEN_END_POINT)
+                                                                .build()
+                                                                .method(HttpMethod.POST)
+                                                                .contentType( MediaType.APPLICATION_FORM_URLENCODED )
+                                                                .body(BodyInserters.fromFormData(reTokenParams))
+                                                                .retrieve()
+                                                                .bodyToMono( TokenResponse.class );
+
+                 return Mono.zip(access, refresh).flatMap( res ->
+                                                {
+                                                    IntroSpecResponse accessResponse = res.getT1();
+                                                    IntroSpecResponse refreshResponse = res.getT2();
+
+                                                    // accessToken 활성화일 시, 다음 요청 처리
+                                                    if( accessResponse.isActive() )
+                                                    {
+                                                        return chain.filter(exchange);
+                                                    }
+                                                    // accessToken 비활성화일 시, refreshToken 결과 확인
+                                                    else
+                                                    {
+                                                        ServerHttpResponse response = exchange.getResponse();
+
+                                                        // refreshToken 활성화 일 시, accessToken 재발급 처리
+                                                        if( refreshResponse.isActive() )
+                                                        {
+                                                            return reToken.flatMap( resToken ->
+                                                            {
+                                                                // accessToken만 응답헤더에 저장
+                                                                response.getHeaders().add("reToken", resToken.getAccessToken());
+
+                                                                return chain.filter(exchange);
+                                                            });
+                                                        }
+                                                        // refreshToken 비활성화 일 시, 토큰 만료 오류 처리
+                                                        else
+                                                        {
+                                                            return unAuthorizedHandler(exchange, ErrorCode.EXPIRE_TOKEN);
+                                                        }
+                                                    }
+                                                })
+                                                .onErrorResume( e ->
+                                                {
+                                                    return exceptionHandler(exchange, ((WebClientResponseException) e));
+                                                });
             }
         });
     }
 
-    private Mono<Void> handleUnAuthorized(ServerWebExchange exchange, ErrorCode errorCode)
+    private Mono<Void> unAuthorizedHandler(ServerWebExchange exchange, ErrorCode errorCode)
     {
         ServerHttpResponse res = (ServerHttpResponse) exchange.getResponse();
 
@@ -135,5 +199,18 @@ public class AuthFilter extends AbstractGatewayFilterFactory<AuthFilter.Config>
         DataBuffer buffer = res.bufferFactory().wrap(bytes);
 
         return res.writeWith(Mono.just(buffer));
+    }
+
+    private Mono<Void> exceptionHandler(ServerWebExchange exchange, WebClientResponseException exception)
+    {
+        ServerHttpResponse res = (ServerHttpResponse) exchange.getResponse();
+
+        byte[] bytes;
+        res.setStatusCode(HttpStatus.UNAUTHORIZED);
+        res.getHeaders().setContentType(MediaType.APPLICATION_JSON);
+
+        DataBuffer buffer = res.bufferFactory().wrap(((WebClientResponseException) exception).getResponseBodyAsByteArray());
+
+        return res.writeWith(Mono.just(buffer)) ;
     }
 }
