@@ -50,7 +50,15 @@ spring:
           uri: lb://ACCOUNT-SERVICE
           predicates:
             - Path=/account-service/**
-            - Method=POST,GET,PUT,DELETE
+            - Method=POST,GET,PUT
           filters:
             - name : AuthFilter
             - RewritePath=/account-service/(?<segment>.*), /$\{segment}
+        - id: memo-service
+          uri: lb://MEMO-SERVICE
+          predicates:
+            - Path=/memo-service/**
+            - Method=POST,GET,PUT
+          filters:
+            - name: AuthFilter
+            - RewritePath=/memo-service/(?<segment>.*), /$\{segment}
