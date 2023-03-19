@@ -19,7 +19,7 @@
 <div align="left">
   <img src="https://img.shields.io/badge/Java-6DB33F?style=for-the-badge">
   <img src="https://img.shields.io/badge/Spring Boot-6DB33F?style=for-the-badge&logo=Spring Boot&logoColor=white">
-  <img src="https://img.shields.io/badge/Spring Cloud Gateway-6DB33F?style=for-the-badge">
+  <img src="https://img.shields.io/badge/Spring Cloud Gateway-6DB33F?style=for-the-badge&logo=Spring&logoColor=white">
 </div>
 
   * 친친네에서 사용할 가계부 Gateway 서비스
