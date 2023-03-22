@@ -62,3 +62,11 @@ spring:
           filters:
             - name: AuthFilter
             - RewritePath=/memo-service/(?<segment>.*), /$\{segment}
+        - id: category-service
+          uri: lb://CATEGORY-SERVICE
+          predicates:
+            - Path=/category-service/**
+            - Method=POST,GET,PUT
+          filters:
+            - name: AuthFilter
+            - RewritePath=/category-service/(?<segment>.*), /$\{segment}
