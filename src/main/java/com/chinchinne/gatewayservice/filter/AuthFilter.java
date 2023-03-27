@@ -184,9 +184,9 @@ public class AuthFilter extends AbstractGatewayFilterFactory<AuthFilter.Config>
         {
             bytes = objectMapper.writeValueAsBytes
             (
-                ErrorResponse.builder().status(errorCode.getHttpStatus().value())
-                                        .error(errorCode.getHttpStatus().name())
-                                        .code(errorCode.name())
+                ErrorResponse.builder().status(errorCode.getCode())
+                                        .error(errorCode.name())
+                                        .code(errorCode.getCode())
                                         .message(errorCode.getDetail())
                                         .build()
             );
