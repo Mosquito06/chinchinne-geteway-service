@@ -58,14 +58,6 @@
             <scope>test</scope>
         </dependency>
         <!-- about etc -->
-
-        <!-- about sleuth -->
-        <dependency>
-            <groupId>org.springframework.cloud</groupId>
-            <artifactId>spring-cloud-starter-sleuth</artifactId>
-        </dependency>
-        <!-- about sleuth -->
-
     </dependencies>
     <dependencyManagement>
         <dependencies>
