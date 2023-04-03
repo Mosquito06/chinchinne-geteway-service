@@ -58,7 +58,7 @@ spring:
           uri: lb://MEMO-SERVICE
           predicates:
             - Path=/memo-service/**
-            - Method=POST,GET,PUT
+            - Method=POST,GET,PUT, DELETE
           filters:
             - name: AuthFilter
             - RewritePath=/memo-service/(?<segment>.*), /$\{segment}
