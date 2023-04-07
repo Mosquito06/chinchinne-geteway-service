@@ -60,7 +60,7 @@ spring:
           uri: lb://MEMO-SERVICE
           predicates:
             - Path=/memo-service/**
-            - Method=POST,GET,PUT, DELETE
+            - Method=POST,GET,PUT,DELETE
           filters:
             - name: AuthFilter
             - RewritePath=/memo-service/(?<segment>.*), /$\{segment}
@@ -68,7 +68,7 @@ spring:
           uri: lb://CATEGORY-SERVICE
           predicates:
             - Path=/category-service/**
-            - Method=POST,GET,PUT
+            - Method=POST,GET,PUT,DELETE
           filters:
             - name: AuthFilter
             - RewritePath=/category-service/(?<segment>.*), /$\{segment}
