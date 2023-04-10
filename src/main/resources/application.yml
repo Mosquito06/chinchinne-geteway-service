@@ -72,3 +72,11 @@ spring:
           filters:
             - name: AuthFilter
             - RewritePath=/category-service/(?<segment>.*), /$\{segment}
+        - id: general-service
+          uri: lb://GENERAL-SERVICE
+          predicates:
+            - Path=/general-service/**
+            - Method=POST,GET,PUT,DELETE
+          filters:
+            - name: AuthFilter
+            - RewritePath=/general-service/(?<segment>.*), /$\{segment}
