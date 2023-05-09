@@ -80,3 +80,11 @@ spring:
           filters:
             - name: AuthFilter
             - RewritePath=/general-service/(?<segment>.*), /$\{segment}
+        - id: event-service
+          uri: lb://EVENT-SERVICE
+          predicates:
+            - Path=/event-service/**
+            - Method=POST
+          filters:
+            - name: AuthFilter
+            - RewritePath=/event-service/(?<segment>.*), /$\{segment}
